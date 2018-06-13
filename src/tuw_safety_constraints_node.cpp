@@ -46,15 +46,21 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
     stop_button_values_.emplace(stop_button_topics_[i], false);
   }
   
+  laser_sub_ = nh_.subscribe("scan", 1, &SafetyConstraintsNode::laserSensorCallback, this);
+  
   // initialize defaults
   omg_wh_max_ = 5.0;
+  obstacle_dist_max_ = 1.0;
   
   stopped_ = false;
+  obstacle_clear_ = true;
   
   constr_pub_ = nh_.advertise<tuw_nav_msgs::BaseConstr>("base_constraints", 1);
   
   reconfigureFnc_ = std::bind(&SafetyConstraintsNode::callbackParameters, this, std::placeholders::_1, std::placeholders::_2);
   reconfigureServer_.setCallback(reconfigureFnc_);
+  
+  namespace_ = nh_.getNamespace();
 }
 
 void SafetyConstraintsNode::restore()
@@ -75,18 +81,18 @@ void SafetyConstraintsNode::publishConstraints()
   constr_pub_.publish(constraints);
 }
 
-void SafetyConstraintsNode::stopCallback(const std_msgs::Bool::ConstPtr& msg, const std::string& topic)
+void SafetyConstraintsNode::stop(bool request_stop)
 {
-  stop_button_values_[topic] = msg->data;
-  
-  bool all_clear = std::all_of(stop_button_values_.begin(), stop_button_values_.end(), [](auto m)
+  bool buttons_clear = std::all_of(stop_button_values_.begin(), stop_button_values_.end(), [](auto m)
                                   {
                                     return !m.second;
                                   });
   
-  if(msg->data && !stopped_)
+  bool all_clear = buttons_clear && obstacle_clear_;
+  
+  if(request_stop && !stopped_)
   {
-    ROS_INFO("Stopping robot motion");
+    ROS_DEBUG("Stopping robot motion");
       
     backup();
     
@@ -94,29 +100,100 @@ void SafetyConstraintsNode::stopCallback(const std_msgs::Bool::ConstPtr& msg, co
     
     stopped_ = true;
   }
-  else if(msg->data && stopped_)
+  else if(request_stop && stopped_)
   {
-    ROS_INFO("Already stopped, not stopping again");
+    ROS_DEBUG("Already stopped, not stopping again");
   }
   else if(all_clear && stopped_)
   {
-    ROS_INFO("Resuming robot motion");
+    ROS_DEBUG("Resuming robot motion");
       
     restore();
    
     stopped_ = false;
   }
+  else if(!all_clear && stopped_)
+  {
+    ROS_DEBUG("Robot will resume when all buttons are cleared and no obstacles detected");
+  }
   else
   {
-    ROS_INFO("Robot will resume when all buttons are cleared");
+    // do not publish anything
+    return;
   }
   
   publishConstraints();
 }
 
+void SafetyConstraintsNode::stopCallback(const std_msgs::Bool::ConstPtr& msg, const std::string& topic)
+{
+  stop_button_values_[topic] = msg->data;
+  
+  stop(msg->data);
+}
+
 void SafetyConstraintsNode::callbackParameters(tuw_safety_constraints::tuw_safety_constraintsConfig& config, uint32_t level)
 {
   omg_wh_max_ = config.omg_wh_max;
+  obstacle_dist_max_ = config.obstacle_dist_max;
+}
+
+void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& _scan)
+{
+  laser_readings_.clear();
+  
+  tf::StampedTransform tfsI2r;
+  try
+  {
+    tf_listener_.lookupTransform(tf::resolve(namespace_, "base_link"), _scan->header.frame_id, _scan->header.stamp, tfsI2r);
+  }
+  catch (tf::TransformException ex)
+  {
+    try
+    {
+      tf_listener_.lookupTransform(tf::resolve(namespace_, "base_link"), _scan->header.frame_id, ros::Time(0), tfsI2r);
+    }
+    catch (tf::TransformException ex)
+    {
+      std::cerr << ex.what() << std::endl;
+      ;
+      return;
+    }
+  }
+  double roll = 0, pitch = 0, yaw = 0;
+  tfsI2r.getBasis().getRPY(roll, pitch, yaw);
+  Pose2D laserX0(tfsI2r.getOrigin().getX(), tfsI2r.getOrigin().getY(), yaw);
+  tuw::Tf2D laserTf(laserX0.tf());
+
+  size_t nr = (_scan->angle_max - _scan->angle_min) / _scan->angle_increment;
+  
+  double front_min = _scan->range_max;
+  
+  for (size_t i = 0; i < nr; i++)
+  {
+    if (std::isinf(_scan->ranges[i]) == 0)
+    {
+      double a = _scan->angle_min + (_scan->angle_increment * i);
+      double d = _scan->ranges[i];
+      
+      tf::Vector3 v(cos(a) * d, sin(a) * d, 0);
+      tf::Vector3 vr = tfsI2r * v;
+      laser_readings_.emplace_back(Point2D(vr.getX(), vr.getY()));
+      
+      if(i < 2 * nr / 3 && i > nr / 3)
+      {
+        if(vr.length() < front_min)
+        {
+          front_min = vr.length();
+        }
+      }
+    }
+  }
+  
+  // check if any object is near the robot
+  // stop robot if necessary
+  obstacle_clear_ = front_min > obstacle_dist_max_;
+  stop(!obstacle_clear_);
 }
 
 int main(int argc, char** argv)

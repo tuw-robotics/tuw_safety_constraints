@@ -37,6 +37,10 @@
 #include <std_msgs/Bool.h>
 #include <tuw_safety_constraints/tuw_safety_constraintsConfig.h>
 #include <dynamic_reconfigure/server.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
+#include <tuw_geometry/tuw_geometry.h>
+#include <sensor_msgs/LaserScan.h>
 
 namespace tuw
 {
@@ -48,24 +52,35 @@ public:
  
   void stopCallback(const std_msgs::Bool::ConstPtr& msg, const std::string& topic);
   void callbackParameters(tuw_safety_constraints::tuw_safety_constraintsConfig& config, uint32_t level);
+  void laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
 private:
   ros::NodeHandle nh_;  
   ros::NodeHandle nh_private_;
   ros::Publisher constr_pub_;  
+  ros::Subscriber laser_sub_;
   std::vector<ros::Subscriber> stop_button_sub_vec_;
-  
   std::vector<std::string> stop_button_topics_;
   
+  tf::TransformListener tf_listener_;
+  tf::TransformBroadcaster tf_broadcaster_;
+  
+  std::string namespace_;
+  
   bool stopped_;
+  bool obstacle_clear_;
   std::map<std::string, bool> stop_button_values_;
   
   double omg_wh_max_;
   double omg_wh_max_backup_;
+  double obstacle_dist_max_;
   
   void backup();
   void restore();
+  void stop(bool request_stop);
   
   void publishConstraints();
+  
+  std::vector<Pose2D> laser_readings_;
   
   dynamic_reconfigure::Server<tuw_safety_constraints::tuw_safety_constraintsConfig> reconfigureServer_;
   dynamic_reconfigure::Server<tuw_safety_constraints::tuw_safety_constraintsConfig>::CallbackType reconfigureFnc_;

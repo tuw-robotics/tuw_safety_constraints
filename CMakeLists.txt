@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tuw_nav_msgs
   dynamic_reconfigure
+  tf
+  tuw_geometry
 )
 
 ## System dependencies are found with CMake's conventions
