@@ -66,19 +66,19 @@ private:
   
   std::string namespace_;
   
+  bool path_following_;
   bool stopped_;
   bool obstacle_clear_;
   std::map<std::string, bool> stop_button_values_;
   
   double omg_wh_max_;
-  double omg_wh_max_backup_;
+  double omg_wh_;
   double obstacle_dist_max_;
+  double wheel_radius_;
   
-  void backup();
-  void restore();
   void stop(bool request_stop);
   
-  void publishConstraints();
+  void publishConstraints(double omg_wh);
   
   std::vector<Pose2D> laser_readings_;
   

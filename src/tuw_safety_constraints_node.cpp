@@ -37,7 +37,9 @@ using namespace tuw;
 
 SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_private_("~")
 {
+  nh_private_.param("wheel_radius", wheel_radius_, 0.097);
   nh_private_.param("stop_button_topics", stop_button_topics_, std::vector<std::string>(1, "stop_button"));
+  nh_private_.param("path_following", path_following_, true);
 
   for(size_t i = 0; i < stop_button_topics_.size(); i++)
   {
@@ -50,7 +52,8 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   
   // initialize defaults
   omg_wh_max_ = 5.0;
-  obstacle_dist_max_ = 1.0;
+  omg_wh_ = omg_wh_max_;
+  obstacle_dist_max_ = 0.5;
   
   stopped_ = false;
   obstacle_clear_ = true;
@@ -63,20 +66,12 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   namespace_ = nh_.getNamespace();
 }
 
-void SafetyConstraintsNode::restore()
-{
-  omg_wh_max_ = omg_wh_max_backup_;
-}
-
-void SafetyConstraintsNode::backup()
-{
-  omg_wh_max_backup_ = omg_wh_max_;
-}
-
-void SafetyConstraintsNode::publishConstraints()
+void SafetyConstraintsNode::publishConstraints(double omg_wh)
 {
   tuw_nav_msgs::BaseConstr constraints;
-  constraints.omg_wh_max = omg_wh_max_;
+  constraints.omg_wh_max = omg_wh;
+  
+  ROS_DEBUG("set omg_wh_ = %f", omg_wh_);
   
   constr_pub_.publish(constraints);
 }
@@ -94,11 +89,9 @@ void SafetyConstraintsNode::stop(bool request_stop)
   {
     ROS_DEBUG("Stopping robot motion");
       
-    backup();
-    
-    omg_wh_max_ = 0;
-    
     stopped_ = true;
+    
+    publishConstraints(0.0);
   }
   else if(request_stop && stopped_)
   {
@@ -108,9 +101,9 @@ void SafetyConstraintsNode::stop(bool request_stop)
   {
     ROS_DEBUG("Resuming robot motion");
       
-    restore();
-   
     stopped_ = false;
+    
+    publishConstraints(omg_wh_);
   }
   else if(!all_clear && stopped_)
   {
@@ -121,8 +114,6 @@ void SafetyConstraintsNode::stop(bool request_stop)
     // do not publish anything
     return;
   }
-  
-  publishConstraints();
 }
 
 void SafetyConstraintsNode::stopCallback(const std_msgs::Bool::ConstPtr& msg, const std::string& topic)
@@ -140,6 +131,13 @@ void SafetyConstraintsNode::callbackParameters(tuw_safety_constraints::tuw_safet
 
 void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& _scan)
 {
+  // laser based obstacle detection is only
+  // relevant if the robot is in path following mode
+  if(!path_following_)
+  {
+    return;
+  }
+  
   laser_readings_.clear();
   
   tf::StampedTransform tfsI2r;
@@ -194,6 +192,16 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
   // stop robot if necessary
   obstacle_clear_ = front_min > obstacle_dist_max_;
   stop(!obstacle_clear_);
+  
+  if(!stopped_ && front_min < 2 * obstacle_dist_max_)
+  {
+    // reduce maximum speed if necessary
+    double v_max = omg_wh_max_ * wheel_radius_;
+    double v = (v_max - 0.1) / (obstacle_dist_max_) * (front_min - obstacle_dist_max_) + 0.1;
+    
+    omg_wh_ = v / wheel_radius_;
+    publishConstraints(omg_wh_);
+  }
 }
 
 int main(int argc, char** argv)

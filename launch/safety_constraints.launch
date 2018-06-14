@@ -5,12 +5,17 @@
   <arg name="stop_buttons_topics" default="stop_buttons.yaml"/>
   <arg name="base_constraints_topic" default="base_constraints"/>
   <arg name="scan" default="/r0/laser0/scan"/>
+  <arg name="cfg" default="default"/>
+  <arg name="config" default="spline"/>
+  <arg name="path_following" default="true"/>
   
   <group ns="$(arg robot_name)">
     <node pkg="tuw_safety_constraints" type="tuw_safety_constraints_node" name="tuw_safety_constraints_node" output="screen" >
       <remap from="base_constraints" to="$(arg base_constraints_topic)"/>
       <remap from="scan" to="$(arg scan)"/>
+      <param name="path_following" value="$(arg path_following)"/>
       <rosparam command="load" file="$(find tuw_safety_constraints)/cfg/$(arg stop_buttons_topics)" />
+      <rosparam command="load" file="$(find tuw_diffdrive_control)/cfg/tuw_control/$(arg cfg)/$(arg config).yaml" />
     </node>
   </group>
 </launch>
