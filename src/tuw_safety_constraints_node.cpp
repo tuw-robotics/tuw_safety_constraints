@@ -49,6 +49,7 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   }
   
   laser_sub_ = nh_.subscribe("scan", 1, &SafetyConstraintsNode::laserSensorCallback, this);
+  airskin_sub_ = nh_.subscribe("airskin_pressures", 1, &SafetyConstraintsNode::airskinCallback, this);
   
   // initialize defaults
   omg_wh_max_ = 5.0;
@@ -57,6 +58,7 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   
   stopped_ = false;
   obstacle_clear_ = true;
+  airskin_clear_ = true;
   
   constr_pub_ = nh_.advertise<tuw_nav_msgs::BaseConstr>("base_constraints", 1);
   
@@ -83,7 +85,7 @@ void SafetyConstraintsNode::stop(bool request_stop)
                                     return !m.second;
                                   });
   
-  bool all_clear = buttons_clear && obstacle_clear_;
+  bool all_clear = buttons_clear && obstacle_clear_ && airskin_clear_;
   
   if(request_stop && !stopped_)
   {
@@ -129,7 +131,7 @@ void SafetyConstraintsNode::callbackParameters(tuw_safety_constraints::tuw_safet
   obstacle_dist_max_ = config.obstacle_dist_max;
 }
 
-void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& _scan)
+void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 {
   // laser based obstacle detection is only
   // relevant if the robot is in path following mode
@@ -143,13 +145,13 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
   tf::StampedTransform tfsI2r;
   try
   {
-    tf_listener_.lookupTransform(tf::resolve(namespace_, "base_link"), _scan->header.frame_id, _scan->header.stamp, tfsI2r);
+    tf_listener_.lookupTransform(tf::resolve(namespace_, "base_link"), scan->header.frame_id, scan->header.stamp, tfsI2r);
   }
   catch (tf::TransformException ex)
   {
     try
     {
-      tf_listener_.lookupTransform(tf::resolve(namespace_, "base_link"), _scan->header.frame_id, ros::Time(0), tfsI2r);
+      tf_listener_.lookupTransform(tf::resolve(namespace_, "base_link"), scan->header.frame_id, ros::Time(0), tfsI2r);
     }
     catch (tf::TransformException ex)
     {
@@ -163,16 +165,16 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
   Pose2D laserX0(tfsI2r.getOrigin().getX(), tfsI2r.getOrigin().getY(), yaw);
   tuw::Tf2D laserTf(laserX0.tf());
 
-  size_t nr = (_scan->angle_max - _scan->angle_min) / _scan->angle_increment;
+  size_t nr = (scan->angle_max - scan->angle_min) / scan->angle_increment;
   
-  double front_min = _scan->range_max;
+  double front_min = scan->range_max;
   
   for (size_t i = 0; i < nr; i++)
   {
-    if (std::isinf(_scan->ranges[i]) == 0)
+    if (std::isinf(scan->ranges[i]) == 0)
     {
-      double a = _scan->angle_min + (_scan->angle_increment * i);
-      double d = _scan->ranges[i];
+      double a = scan->angle_min + (scan->angle_increment * i);
+      double d = scan->ranges[i];
       
       tf::Vector3 v(cos(a) * d, sin(a) * d, 0);
       tf::Vector3 vr = tfsI2r * v;
@@ -202,6 +204,18 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
     omg_wh_ = v / wheel_radius_;
     publishConstraints(omg_wh_);
   }
+}
+
+void SafetyConstraintsNode::airskinCallback(const tuw_airskin_msgs::AirskinPressures::ConstPtr& pressures)
+{
+  // do something here with airskin pressure to stop the robot from moving
+  // pressure > 100000 [Pa] should indicate that there is pressure on the pad
+  bool airskin_clear_ = !std::any_of(pressures->pressures.begin(), pressures->pressures.end(), [](unsigned int p)
+                                   {
+                                     return p > 100000;
+                                   });
+  
+  stop(!airskin_clear_);
 }
 
 int main(int argc, char** argv)

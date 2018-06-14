@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   tuw_nav_msgs
+  tuw_airskin_msgs
   dynamic_reconfigure
   tf
   tuw_geometry

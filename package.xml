@@ -53,6 +53,7 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>tuw_nav_msgs</depend>
+  <depend>tuw_airskin_msgs</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>tf</depend>
   <depend>tuw_geometry</depend>
