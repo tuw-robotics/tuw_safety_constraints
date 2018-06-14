@@ -41,6 +41,7 @@
 #include <tf/transform_listener.h>
 #include <tuw_geometry/tuw_geometry.h>
 #include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/Joy.h>
 #include <tuw_airskin_msgs/AirskinPressures.h>
 
 namespace tuw
@@ -55,12 +56,14 @@ public:
   void callbackParameters(tuw_safety_constraints::tuw_safety_constraintsConfig& config, uint32_t level);
   void laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
   void airskinCallback(const tuw_airskin_msgs::AirskinPressures::ConstPtr& pressures);
+  void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
 private:
   ros::NodeHandle nh_;  
   ros::NodeHandle nh_private_;
   ros::Publisher constr_pub_;  
   ros::Subscriber laser_sub_;
   ros::Subscriber airskin_sub_;
+  ros::Subscriber joy_sub_;
   std::vector<ros::Subscriber> stop_button_sub_vec_;
   std::vector<std::string> stop_button_topics_;
   
@@ -73,7 +76,9 @@ private:
   bool stopped_;
   bool obstacle_clear_;
   bool airskin_clear_;
+  bool joy_clear_;
   std::map<std::string, bool> stop_button_values_;
+  int joy_button_idx_;
   
   double omg_wh_max_;
   double omg_wh_;

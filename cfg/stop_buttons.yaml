@@ -1,1 +1,2 @@
 stop_button_topics: [stop_button1, stop_button2] 
+joy_button_idx: 5

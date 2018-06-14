@@ -40,6 +40,7 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   nh_private_.param("wheel_radius", wheel_radius_, 0.097);
   nh_private_.param("stop_button_topics", stop_button_topics_, std::vector<std::string>(1, "stop_button"));
   nh_private_.param("path_following", path_following_, true);
+  nh_private_.param("joy_button_idx", joy_button_idx_, 5);
 
   for(size_t i = 0; i < stop_button_topics_.size(); i++)
   {
@@ -210,7 +211,7 @@ void SafetyConstraintsNode::airskinCallback(const tuw_airskin_msgs::AirskinPress
 {
   // do something here with airskin pressure to stop the robot from moving
   // pressure > 100000 [Pa] should indicate that there is pressure on the pad
-  bool airskin_clear_ = !std::any_of(pressures->pressures.begin(), pressures->pressures.end(), [](unsigned int p)
+  airskin_clear_ = !std::any_of(pressures->pressures.begin(), pressures->pressures.end(), [](unsigned int p)
                                    {
                                      return p > 100000;
                                    });
@@ -228,4 +229,17 @@ int main(int argc, char** argv)
   ros::spin();  
   
   return 0;
+}
+
+void SafetyConstraintsNode::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+{
+  if(joy->buttons.size() > static_cast<unsigned int>(joy_button_idx_))
+  {
+    joy_clear_ = joy->buttons[joy_button_idx_] == 0;
+    stop(!joy_clear_);
+  }
+  else
+  {
+    ROS_DEBUG("joy button does not exist, check the config file");
+  }
 }
