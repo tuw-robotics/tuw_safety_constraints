@@ -37,7 +37,6 @@ using namespace tuw;
 
 SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_private_("~")
 {
-  nh_private_.param("wheel_radius", wheel_radius_, 0.097);
   nh_private_.param("stop_button_topics", stop_button_topics_, std::vector<std::string>(1, "stop_button"));
   nh_private_.param("path_following", path_following_, true);
   nh_private_.param("joy_button_idx", joy_button_idx_, 5);
@@ -51,10 +50,11 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   
   laser_sub_ = nh_.subscribe("scan", 1, &SafetyConstraintsNode::laserSensorCallback, this);
   airskin_sub_ = nh_.subscribe("airskin_pressures", 1, &SafetyConstraintsNode::airskinCallback, this);
+  radius_displacement_sub_ = nh_.subscribe("estimated_radius_displacement", 1, &SafetyConstraintsNode::radiusDisplacementCallback, this);
   
   // initialize defaults
-  omg_wh_max_ = 5.0;
-  omg_wh_ = omg_wh_max_;
+  v_max_ = 5.0;
+  v_ = v_max_;
   obstacle_dist_max_ = 0.5;
   
   stopped_ = false;
@@ -69,12 +69,14 @@ SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_
   namespace_ = nh_.getNamespace();
 }
 
-void SafetyConstraintsNode::publishConstraints(double omg_wh)
+void SafetyConstraintsNode::publishConstraints(double v)
 {
   tuw_nav_msgs::BaseConstr constraints;
-  constraints.omg_wh_max = omg_wh;
+  constraints.v_max = v;
+  constraints.omg_wh_max = v / wheel_radius_;
+  constraints.w_max = 2 * wheel_radius_ * constraints.omg_wh_max / wheel_displacement_;
   
-  ROS_DEBUG("set omg_wh_ = %f", omg_wh_);
+  ROS_DEBUG("set v_max = %f", v);
   
   constr_pub_.publish(constraints);
 }
@@ -106,7 +108,7 @@ void SafetyConstraintsNode::stop(bool request_stop)
       
     stopped_ = false;
     
-    publishConstraints(omg_wh_);
+    publishConstraints(v_);
   }
   else if(!all_clear && stopped_)
   {
@@ -128,7 +130,7 @@ void SafetyConstraintsNode::stopCallback(const std_msgs::Bool::ConstPtr& msg, co
 
 void SafetyConstraintsNode::callbackParameters(tuw_safety_constraints::tuw_safety_constraintsConfig& config, uint32_t level)
 {
-  omg_wh_max_ = config.omg_wh_max;
+  v_max_ = config.v_max;
   obstacle_dist_max_ = config.obstacle_dist_max;
 }
 
@@ -199,11 +201,9 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
   if(!stopped_ && front_min < 2 * obstacle_dist_max_)
   {
     // reduce maximum speed if necessary
-    double v_max = omg_wh_max_ * wheel_radius_;
-    double v = (v_max - 0.1) / (obstacle_dist_max_) * (front_min - obstacle_dist_max_) + 0.1;
+    v_ = (v_max_ - 0.1) / (obstacle_dist_max_) * (front_min - obstacle_dist_max_) + 0.1;
     
-    omg_wh_ = v / wheel_radius_;
-    publishConstraints(omg_wh_);
+    publishConstraints(v_);
   }
 }
 
@@ -241,5 +241,14 @@ void SafetyConstraintsNode::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
   else
   {
     ROS_DEBUG("joy button does not exist, check the config file");
+  }
+}
+
+void SafetyConstraintsNode::radiusDisplacementCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
+{
+  if(msg->data.size() > 1)
+  {
+    wheel_displacement_ = msg->data[0];
+    wheel_radius_ = msg->data[1];
   }
 }

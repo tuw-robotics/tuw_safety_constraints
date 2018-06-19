@@ -35,6 +35,7 @@
 
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Float32MultiArray.h>
 #include <tuw_safety_constraints/tuw_safety_constraintsConfig.h>
 #include <dynamic_reconfigure/server.h>
 #include <tf/transform_broadcaster.h>
@@ -57,6 +58,7 @@ public:
   void laserSensorCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
   void airskinCallback(const tuw_airskin_msgs::AirskinPressures::ConstPtr& pressures);
   void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+  void radiusDisplacementCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
 private:
   ros::NodeHandle nh_;  
   ros::NodeHandle nh_private_;
@@ -64,6 +66,7 @@ private:
   ros::Subscriber laser_sub_;
   ros::Subscriber airskin_sub_;
   ros::Subscriber joy_sub_;
+  ros::Subscriber radius_displacement_sub_;
   std::vector<ros::Subscriber> stop_button_sub_vec_;
   std::vector<std::string> stop_button_topics_;
   
@@ -80,15 +83,16 @@ private:
   std::map<std::string, bool> stop_button_values_;
   int joy_button_idx_;
   
-  double omg_wh_max_;
-  double omg_wh_;
+  double v_max_;
+  double v_;
   double obstacle_dist_max_;
   double wheel_radius_;
+  double wheel_displacement_;
   
   std::vector<Pose2D> laser_readings_;
   
   void stop(bool request_stop);
-  void publishConstraints(double omg_wh);
+  void publishConstraints(double v);
   
   dynamic_reconfigure::Server<tuw_safety_constraints::tuw_safety_constraintsConfig> reconfigureServer_;
   dynamic_reconfigure::Server<tuw_safety_constraints::tuw_safety_constraintsConfig>::CallbackType reconfigureFnc_;
