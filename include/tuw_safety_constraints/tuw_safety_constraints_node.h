@@ -64,7 +64,6 @@ private:
   ros::NodeHandle nh_private_;
   ros::Publisher constr_pub_;  
   ros::Subscriber laser_sub_;
-  ros::Subscriber airskin_sub_;
   ros::Subscriber joy_sub_;
   ros::Subscriber radius_displacement_sub_;
   std::vector<ros::Subscriber> stop_button_sub_vec_;
@@ -75,7 +74,6 @@ private:
   
   std::string namespace_;
   
-  bool path_following_;
   bool stopped_;
   bool obstacle_clear_;
   bool airskin_clear_;

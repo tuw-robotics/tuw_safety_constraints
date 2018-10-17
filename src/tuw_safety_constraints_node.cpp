@@ -31,25 +31,41 @@
  ***************************************************************************/
 
 #include "tuw_safety_constraints/tuw_safety_constraints_node.h"
+#include <boost/algorithm/string.hpp>
 #include <tuw_nav_msgs/BaseConstr.h>
 
 using namespace tuw;
 
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "safety_constraints");
+  ros::NodeHandle n;
+  SafetyConstraintsNode safetyConstraintsNode(n);
+  
+  ros::spin();  
+  return 0;
+}
+
+
 SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_private_("~")
 {
-  nh_private_.param("stop_button_topics", stop_button_topics_, std::vector<std::string>(1, "stop_button"));
-  nh_private_.param("path_following", path_following_, true);
+  nh_private_.param<std::string>("stop_button_topics", stop_topics_tmp, "stop_button");
+  bool path_following;
+  nh_private_.param("path_following", path_following, false);
   nh_private_.param("joy_button_idx", joy_button_idx_, 5);
 
+  std::string stop_topics_tmp;
+  boost::erase_all(stop_topics_tmp, " []\"");
+  boost::split ( stop_button_topics_, stop_topics_tmp, boost::is_any_of(","));
   for(size_t i = 0; i < stop_button_topics_.size(); i++)
   {
     stop_button_sub_vec_.emplace_back(nh_.subscribe<std_msgs::Bool>(stop_button_topics_[i], 1, std::bind(&SafetyConstraintsNode::stopCallback, this, std::placeholders::_1, stop_button_topics_[i])));
-    
     stop_button_values_.emplace(stop_button_topics_[i], false);
+    ROS_INFO("Stop subsriber added on topic %s", stop_button_topics_[i].c_str());
   }
-  
-  laser_sub_ = nh_.subscribe("scan", 1, &SafetyConstraintsNode::laserSensorCallback, this);
-  airskin_sub_ = nh_.subscribe("airskin_pressures", 1, &SafetyConstraintsNode::airskinCallback, this);
+  if(path_following) {
+    laser_sub_ = nh_.subscribe("scan", 1, &SafetyConstraintsNode::laserSensorCallback, this);
+  }
   radius_displacement_sub_ = nh_.subscribe("estimated_radius_displacement", 1, &SafetyConstraintsNode::radiusDisplacementCallback, this);
   
   // initialize defaults
@@ -124,7 +140,6 @@ void SafetyConstraintsNode::stop(bool request_stop)
 void SafetyConstraintsNode::stopCallback(const std_msgs::Bool::ConstPtr& msg, const std::string& topic)
 {
   stop_button_values_[topic] = msg->data;
-  
   stop(msg->data);
 }
 
@@ -138,10 +153,6 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
 {
   // laser based obstacle detection is only
   // relevant if the robot is in path following mode
-  if(!path_following_)
-  {
-    return;
-  }
   
   laser_readings_.clear();
   
@@ -205,30 +216,6 @@ void SafetyConstraintsNode::laserSensorCallback(const sensor_msgs::LaserScan::Co
     
     publishConstraints(v_);
   }
-}
-
-void SafetyConstraintsNode::airskinCallback(const tuw_airskin_msgs::AirskinPressures::ConstPtr& pressures)
-{
-  // do something here with airskin pressure to stop the robot from moving
-  // pressure > 100000 [Pa] should indicate that there is pressure on the pad
-  airskin_clear_ = !std::any_of(pressures->pressures.begin(), pressures->pressures.end(), [](unsigned int p)
-                                   {
-                                     return p > 100000;
-                                   });
-  
-  stop(!airskin_clear_);
-}
-
-int main(int argc, char** argv)
-{
-  ros::init(argc, argv, "safety_constraints");
-  ros::NodeHandle n;
-
-  SafetyConstraintsNode safetyConstraintsNode(n);
-  
-  ros::spin();  
-  
-  return 0;
 }
 
 void SafetyConstraintsNode::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
