@@ -49,12 +49,12 @@ int main(int argc, char** argv)
 
 SafetyConstraintsNode::SafetyConstraintsNode(ros::NodeHandle& nh) : nh_(nh), nh_private_("~")
 {
+  std::string stop_topics_tmp;
   nh_private_.param<std::string>("stop_button_topics", stop_topics_tmp, "stop_button");
   bool path_following;
   nh_private_.param("path_following", path_following, false);
   nh_private_.param("joy_button_idx", joy_button_idx_, 5);
 
-  std::string stop_topics_tmp;
   boost::erase_all(stop_topics_tmp, " []\"");
   boost::split ( stop_button_topics_, stop_topics_tmp, boost::is_any_of(","));
   for(size_t i = 0; i < stop_button_topics_.size(); i++)
